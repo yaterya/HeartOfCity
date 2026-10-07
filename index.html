@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE 群組佈告欄</title>
-    <!-- 引入 Tailwind CSS 讓畫面好看 -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
@@ -15,11 +14,12 @@
             <p class="text-gray-500 text-sm mt-1">大家可以在這裡張貼要贈送或出售的物品</p>
         </header>
 
-        <!-- 表單區塊 (新增/修改) -->
+        <!-- 表單區塊 -->
         <div class="bg-white rounded-xl shadow-md p-5 mb-8 border border-gray-100">
             <h2 id="form-title" class="text-lg font-semibold mb-4 text-gray-700">✍️ 發布新貼文</h2>
             <form id="post-form" class="space-y-4">
                 <input type="hidden" id="post-id">
+                <input type="hidden" id="imageUrl" value="">
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-600 mb-1">標題</label>
@@ -46,8 +46,9 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-600 mb-1">圖片網址 (選填)</label>
-                    <input type="url" id="imageUrl" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="https://imgur.com/... (請貼圖片直鏈)">
+                    <label class="block text-sm font-medium text-gray-600 mb-1">上傳圖片 (選填)</label>
+                    <input type="file" id="imageFile" accept="image/*" class="w-full border rounded-lg px-3 py-2 text-sm bg-white file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <p class="text-xs text-gray-400 mt-1">支援手機直接拍照或從相簿選擇圖片</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -68,11 +69,10 @@
             </form>
         </div>
 
-        <!-- 貼文列表區塊 -->
+        <!-- 貼文列表 -->
         <div class="space-y-4">
             <h2 class="text-lg font-semibold text-gray-700">📋 目前佈告欄</h2>
             <div id="posts-container" class="space-y-4">
-                <!-- 動態載入貼文 -->
                 <p class="text-center text-gray-400 py-6">載入中...</p>
             </div>
         </div>
@@ -83,16 +83,14 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // ==========================================
-        // 請填入你在 Firebase 申請到的設定值
-        // ==========================================
+        // 已填入你的專案設定
         const firebaseConfig = {
             apiKey: "AIzaSyCUO83tA5cJGoADJPSeTEOzy_LP2_s8NSY",
-  authDomain: "heart-6b69f.firebaseapp.com",
-  projectId: "heart-6b69f",
-  storageBucket: "heart-6b69f.firebasestorage.app",
-  messagingSenderId: "403158580810",
-  appId: "1:403158580810:web:dff9d866b6eab6deb6b0b3"
+            authDomain: "heart-6b69f.firebaseapp.com",
+            projectId: "heart-6b69f",
+            storageBucket: "heart-6b69f.firebasestorage.app",
+            messagingSenderId: "403158580810",
+            appId: "1:403158580810:web:dff9d866b6eab6deb6b0b3"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -103,7 +101,6 @@
         const typeSelect = document.getElementById('type');
         const priceContainer = document.getElementById('price-container');
 
-        // 控制價格欄位是否顯示
         window.togglePrice = function() {
             if (typeSelect.value === '贈送') {
                 priceContainer.style.display = 'none';
@@ -112,6 +109,45 @@
                 priceContainer.style.display = 'block';
             }
         };
+
+        // 圖片壓縮並轉為 Base64
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                        resolve(dataUrl);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
 
         // 載入所有貼文
         async function loadPosts() {
@@ -164,20 +200,31 @@
                 });
             } catch (error) {
                 console.error("載入失敗:", error);
-                postsContainer.innerHTML = '<p class="text-center text-red-400 py-6">載入失敗，請檢查 Firebase 設定。</p>';
+                postsContainer.innerHTML = '<p class="text-center text-red-400 py-6">載入失敗，請檢查 Firebase 設定或 Firestore 規則。</p>';
             }
         }
 
         // 表單送出（新增或修改）
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.innerText = "處理中...";
+            submitBtn.disabled = true;
+
             const postId = document.getElementById('post-id').value;
+            const imageFile = document.getElementById('imageFile').files[0];
+            let imageUrl = document.getElementById('imageUrl').value;
+
+            if (imageFile) {
+                imageUrl = await compressImage(imageFile);
+            }
+
             const postData = {
                 title: document.getElementById('title').value,
                 type: document.getElementById('type').value,
                 price: document.getElementById('type').value === '贈送' ? '0' : document.getElementById('price').value,
                 description: document.getElementById('description').value,
-                imageUrl: document.getElementById('imageUrl').value,
+                imageUrl: imageUrl,
                 contact: document.getElementById('contact').value,
                 pin: document.getElementById('pin').value,
                 createdAt: new Date()
@@ -185,7 +232,6 @@
 
             try {
                 if (postId) {
-                    // 修改：先驗證密碼
                     const docRef = doc(db, "posts", postId);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists() && docSnap.data().pin === postData.pin) {
@@ -197,7 +243,6 @@
                         alert("密碼錯誤，無法修改！");
                     }
                 } else {
-                    // 新增
                     await addDoc(collection(db, "posts"), postData);
                     alert("發布成功！");
                     form.reset();
@@ -206,11 +251,13 @@
                 }
             } catch (error) {
                 console.error("操作失敗:", error);
-                alert("操作失敗，請稍後再試");
+                alert("操作失敗，可能是圖片檔案太大，請換一張較小的照片");
+            } finally {
+                submitBtn.innerText = postId ? "儲存修改" : "發布貼文";
+                submitBtn.disabled = false;
             }
         });
 
-        // 點擊修改按鈕
         window.editPost = async function(postId) {
             const pinInput = prompt("請輸入當初設定的 4 位數管理密碼才能修改：");
             if (!pinInput) return;
@@ -227,6 +274,7 @@
                     document.getElementById('price').value = data.price;
                     document.getElementById('description').value = data.description;
                     document.getElementById('imageUrl').value = data.imageUrl || '';
+                    document.getElementById('imageFile').value = '';
                     document.getElementById('contact').value = data.contact;
                     document.getElementById('pin').value = data.pin;
 
@@ -240,7 +288,6 @@
             }
         };
 
-        // 點擊刪除按鈕
         window.deletePost = async function(postId) {
             const pinInput = prompt("請輸入當初設定的 4 位數管理密碼才能刪除：");
             if (!pinInput) return;
@@ -261,23 +308,21 @@
             }
         };
 
-        // 重置表單
         window.resetForm = function() {
             form.reset();
             document.getElementById('post-id').value = '';
+            document.getElementById('imageUrl').value = '';
             document.getElementById('form-title').innerText = "✍️ 發布新貼文";
             document.getElementById('submit-btn').innerText = "發布貼文";
             document.getElementById('cancel-btn').classList.add('hidden');
             togglePrice();
         }
 
-        // 防止 XSS 攻擊的簡單跳脫字元
         function escapeHtml(text) {
             if (!text) return '';
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        // 初始載入
         loadPosts();
     </script>
 </body>
