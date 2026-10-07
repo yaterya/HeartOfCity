@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE 群組佈告欄</title>
+    <!-- 引入 Tailwind CSS 讓畫面好看 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="max-w-2xl mx-auto p-4 sm:p-6">
+        <header class="text-center mb-8">
+            <h1 class="text-2xl sm:text-3xl font-bold text-blue-600">🛒 LINE 群組好物交流佈告欄</h1>
+            <p class="text-gray-500 text-sm mt-1">大家可以在這裡張貼要贈送或出售的物品</p>
+        </header>
+
+        <!-- 表單區塊 (新增/修改) -->
+        <div class="bg-white rounded-xl shadow-md p-5 mb-8 border border-gray-100">
+            <h2 id="form-title" class="text-lg font-semibold mb-4 text-gray-700">✍️ 發布新貼文</h2>
+            <form id="post-form" class="space-y-4">
+                <input type="hidden" id="post-id">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">標題</label>
+                    <input type="text" id="title" required class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="例如：九成新 iPhone 13 / 免費送二手書">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">類型</label>
+                        <select id="type" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" onchange="togglePrice()">
+                            <option value="贈送">🎁 免費贈送</option>
+                            <option value="販售">💰 要賣的</option>
+                        </select>
+                    </div>
+                    <div id="price-container">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">價格 (元)</label>
+                        <input type="number" id="price" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="例如：500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">物品描述 / 狀況</label>
+                    <textarea id="description" rows="3" required class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="請簡述物品新舊程度、面交地點等..."></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">圖片網址 (選填)</label>
+                    <input type="url" id="imageUrl" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="https://imgur.com/... (請貼圖片直鏈)">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">聯絡方式 (LINE ID / 電話)</label>
+                        <input type="text" id="contact" required class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="例如：line_id_123">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">管理密碼 (4位數)</label>
+                        <input type="password" id="pin" maxlength="4" required class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="修改/刪除時需輸入">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" id="submit-btn" class="flex-1 bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700 transition">發布貼文</button>
+                    <button type="button" id="cancel-btn" onclick="resetForm()" class="hidden bg-gray-300 text-gray-700 font-medium px-4 py-2 rounded-lg hover:bg-gray-400 transition">取消</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 貼文列表區塊 -->
+        <div class="space-y-4">
+            <h2 class="text-lg font-semibold text-gray-700">📋 目前佈告欄</h2>
+            <div id="posts-container" class="space-y-4">
+                <!-- 動態載入貼文 -->
+                <p class="text-center text-gray-400 py-6">載入中...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (v10) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // ==========================================
+        // 請填入你在 Firebase 申請到的設定值
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "你的API_KEY",
+            authDomain: "你的專案.firebaseapp.com",
+            projectId: "你的專案ID",
+            storageBucket: "你的專案.appspot.com",
+            messagingSenderId: "你的SenderID",
+            appId: "你的AppID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const form = document.getElementById('post-form');
+        const postsContainer = document.getElementById('posts-container');
+        const typeSelect = document.getElementById('type');
+        const priceContainer = document.getElementById('price-container');
+
+        // 控制價格欄位是否顯示
+        window.togglePrice = function() {
+            if (typeSelect.value === '贈送') {
+                priceContainer.style.display = 'none';
+                document.getElementById('price').value = '0';
+            } else {
+                priceContainer.style.display = 'block';
+            }
+        };
+
+        // 載入所有貼文
+        async function loadPosts() {
+            postsContainer.innerHTML = '<p class="text-center text-gray-400 py-6">載入中...</p>';
+            try {
+                const querySnapshot = await getDocs(collection(db, "posts"));
+                postsContainer.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    postsContainer.innerHTML = '<p class="text-center text-gray-400 py-6">目前沒有任何貼文，趕快來發布第一篇吧！</p>';
+                    return;
+                }
+
+                querySnapshot.forEach((document) => {
+                    const post = document.data();
+                    const postId = document.id;
+                    
+                    const badgeColor = post.type === '贈送' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700';
+                    const priceText = post.type === '贈送' ? '免費贈送' : `NT$ ${post.price}`;
+
+                    const card = document.createElement('div');
+                    card.className = "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col sm:flex-row gap-4 items-start";
+                    
+                    let imageHtml = '';
+                    if (post.imageUrl) {
+                        imageHtml = `<img src="${post.imageUrl}" alt="物品圖片" class="w-full sm:w-32 h-32 object-cover rounded-lg border flex-shrink-0">`;
+                    }
+
+                    card.innerHTML = `
+                        ${imageHtml}
+                        <div class="flex-1 w-full">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${badgeColor}">${post.type}</span>
+                                    <h3 class="text-lg font-bold text-gray-800 mt-1">${escapeHtml(post.title)}</h3>
+                                </div>
+                                <span class="text-red-500 font-bold text-base">${priceText}</span>
+                            </div>
+                            <p class="text-gray-600 text-sm whitespace-pre-line mb-3">${escapeHtml(post.description)}</p>
+                            <div class="text-xs text-gray-500 space-y-1 mb-3">
+                                <p>📞 聯絡方式：<span class="font-medium text-gray-700">${escapeHtml(post.contact)}</span></p>
+                            </div>
+                            <div class="flex justify-end gap-2 border-t pt-3">
+                                <button onclick="editPost('${postId}')" class="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded hover:bg-gray-200 transition">修改</button>
+                                <button onclick="deletePost('${postId}')" class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded hover:bg-red-100 transition">刪除</button>
+                            </div>
+                        </div>
+                    `;
+                    postsContainer.appendChild(card);
+                });
+            } catch (error) {
+                console.error("載入失敗:", error);
+                postsContainer.innerHTML = '<p class="text-center text-red-400 py-6">載入失敗，請檢查 Firebase 設定。</p>';
+            }
+        }
+
+        // 表單送出（新增或修改）
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const postId = document.getElementById('post-id').value;
+            const postData = {
+                title: document.getElementById('title').value,
+                type: document.getElementById('type').value,
+                price: document.getElementById('type').value === '贈送' ? '0' : document.getElementById('price').value,
+                description: document.getElementById('description').value,
+                imageUrl: document.getElementById('imageUrl').value,
+                contact: document.getElementById('contact').value,
+                pin: document.getElementById('pin').value,
+                createdAt: new Date()
+            };
+
+            try {
+                if (postId) {
+                    // 修改：先驗證密碼
+                    const docRef = doc(db, "posts", postId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists() && docSnap.data().pin === postData.pin) {
+                        await updateDoc(docRef, postData);
+                        alert("修改成功！");
+                        resetForm();
+                        loadPosts();
+                    } else {
+                        alert("密碼錯誤，無法修改！");
+                    }
+                } else {
+                    // 新增
+                    await addDoc(collection(db, "posts"), postData);
+                    alert("發布成功！");
+                    form.reset();
+                    togglePrice();
+                    loadPosts();
+                }
+            } catch (error) {
+                console.error("操作失敗:", error);
+                alert("操作失敗，請稍後再試");
+            }
+        });
+
+        // 點擊修改按鈕
+        window.editPost = async function(postId) {
+            const pinInput = prompt("請輸入當初設定的 4 位數管理密碼才能修改：");
+            if (!pinInput) return;
+
+            const docRef = doc(db, "posts", postId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.pin === pinInput) {
+                    document.getElementById('post-id').value = postId;
+                    document.getElementById('title').value = data.title;
+                    document.getElementById('type').value = data.type;
+                    togglePrice();
+                    document.getElementById('price').value = data.price;
+                    document.getElementById('description').value = data.description;
+                    document.getElementById('imageUrl').value = data.imageUrl || '';
+                    document.getElementById('contact').value = data.contact;
+                    document.getElementById('pin').value = data.pin;
+
+                    document.getElementById('form-title').innerText = "✏️ 修改貼文";
+                    document.getElementById('submit-btn').innerText = "儲存修改";
+                    document.getElementById('cancel-btn').classList.remove('hidden');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                    alert("密碼錯誤！");
+                }
+            }
+        };
+
+        // 點擊刪除按鈕
+        window.deletePost = async function(postId) {
+            const pinInput = prompt("請輸入當初設定的 4 位數管理密碼才能刪除：");
+            if (!pinInput) return;
+
+            const docRef = doc(db, "posts", postId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.pin === pinInput) {
+                    if (confirm("確定要刪除這篇貼文嗎？")) {
+                        await deleteDoc(docRef);
+                        alert("已刪除！");
+                        loadPosts();
+                    }
+                } else {
+                    alert("密碼錯誤！");
+                }
+            }
+        };
+
+        // 重置表單
+        window.resetForm = function() {
+            form.reset();
+            document.getElementById('post-id').value = '';
+            document.getElementById('form-title').innerText = "✍️ 發布新貼文";
+            document.getElementById('submit-btn').innerText = "發布貼文";
+            document.getElementById('cancel-btn').classList.add('hidden');
+            togglePrice();
+        }
+
+        // 防止 XSS 攻擊的簡單跳脫字元
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // 初始載入
+        loadPosts();
+    </script>
+</body>
+</html>
